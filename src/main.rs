@@ -10,7 +10,7 @@
 //!
 //! You can use this example together with the `server` example.
 
-use std::env;
+use std::{env, time::Duration};
 
 use futures_util::{future, pin_mut, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -19,8 +19,9 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 #[tokio::main]
 async fn main() {
     let url =
-        env::args().nth(1).unwrap_or_else(|| panic!("this program requires at least one argument"));
-
+        env::args().nth(1).expect("ws://yamanote.proxy.rlwy.net:26134");
+    println!("connecting to: {}", &url);
+    tokio::time::sleep(Duration::from_secs(1)).await;
     let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
     tokio::spawn(read_stdin(stdin_tx));
 
