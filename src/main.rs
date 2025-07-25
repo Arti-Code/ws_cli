@@ -10,11 +10,11 @@
 //!
 //! You can use this example together with the `server` example.
 
-use std::{env, io::Read, str::Bytes};
+use std::env;
 
 use futures_util::{future, pin_mut, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_tungstenite::{connect_async, tungstenite::{protocol::Message}};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 #[tokio::main]
 async fn main() {
