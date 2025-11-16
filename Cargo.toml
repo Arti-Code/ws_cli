@@ -1,6 +1,6 @@
 [package]
 name = "chat"
-version = "0.3.0"
+version = "0.6.0"
 edition = "2024"
 authors = ["Artur Gwoździowski"]
 
@@ -8,8 +8,9 @@ authors = ["Artur Gwoździowski"]
 colored = "3.0.0"
 futures-channel = "0.3.31"
 futures-util = "0.3.31"
+rand = "0.9.2"
 tokio = { version = "1.46.1", features = ["full"] }
-tokio-tungstenite = "0.27.0"
+tokio-tungstenite = "0.28.0"
 
 [build-dependencies]
 embed-resource = "3.0.5"
