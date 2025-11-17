@@ -1,8 +1,11 @@
 extern crate colored;
 
-//use ::rand::prelude::*;
-//use rand::{distr::Alphanumeric, rng};
-use std::{env, str::Bytes, sync::Arc, time::Duration};
+use std::{
+    env, 
+    //str::Bytes, 
+    //sync::Arc, 
+    time::Duration
+};
 use chat::cmd::Command;
 use futures_util::{
     future,
@@ -14,6 +17,8 @@ use tokio::io::*;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::{Utf8Bytes, protocol::Message}};
 use colored::Colorize;
 
+type ChatSender = futures_channel::mpsc::UnboundedSender<Message>;
+
 
 #[tokio::main]
 async fn main() {
@@ -21,13 +26,12 @@ async fn main() {
     let user_name= register_name().await;
     let user_name: &'static str  = Box::leak(user_name.into_boxed_str());
     let url = get_connection_address().await;
-    let (mut stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
+    let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
     //let tx = Arc::new(tokio::sync::Mutex::new(stdin_tx));
     //let tx1 = tx.clone();
-    tokio::spawn({
-        send_message(stdin_tx, &user_name)
-    });
+    tokio::spawn(send_message(stdin_tx.clone(), &user_name));
     let ws_stream = establish_connection(&url).await;
+    send_command(stdin_tx.clone(), &Command::RegisterUserName(user_name.to_string())).await;
     let (write, read) = ws_stream.split();
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     let ws_to_stdout = {
@@ -48,10 +52,10 @@ async fn main() {
 }
 
 async fn establish_connection(url: &str) -> WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>> {
-    println!("connecting to: {}...", url);
+    print!("connecting to: {}...", url);
     tokio::time::sleep(Duration::from_secs(1)).await;
     let (ws_stream, _) = connect_async(url).await.expect("failed to connect");
-    println!("{}", "connected!".to_string());
+    println!("[ok]]");
     println!("---------------------");
     ws_stream
 }
@@ -65,7 +69,7 @@ async fn recv_messages(msg: Message) {
         .await.expect("can't write a message");
 }
 
-async fn send_message(mut tx: futures_channel::mpsc::UnboundedSender<Message>, user_name: &str) {
+async fn send_message(tx: ChatSender, user_name: &str) {
     let mut stdin = tokio::io::stdin();
     let user = format!("[{}] ", user_name).as_bytes().to_vec();
     loop {
@@ -100,19 +104,19 @@ async fn check_command(input: &str) -> Option<Command> {
     match trimmed {
         "/quit" => Some(Command::Quit),
         "/list" => Some(Command::ListUsers),
-        cmd if cmd.starts_with("/register ") => {
-            let name = cmd.trim_start_matches("/register ").to_string();
-            Some(Command::RegisterUserName(name))
-        }
+        //cmd if cmd.starts_with("/register ") => {
+        //    let name = cmd.trim_start_matches("/register ").to_string();
+        //    Some(Command::RegisterUserName(name))
+        //}
         _ => None,
     }
 }
 
-async fn send_command(mut tx: futures_channel::mpsc::UnboundedSender<Message>, command: &Command) -> bool {
+async fn send_command(tx: ChatSender, command: &Command) -> bool {
     let mut closing= false;
     let cmd_msg = match command {
         Command::Quit => {
-            tx.disconnect();
+            tx.close_channel();
             let msg = "connection closed".to_string().red();
             println!("{}", msg);
             closing = true;
@@ -134,8 +138,9 @@ async fn register_name() -> String {
     println!("Enter your user name: ");
     let mut buf = String::new();
     _ = std::io::stdin().read_line(&mut buf).expect("failed to register user name");
-    println!("Welcome, {}!", &buf);
-    buf.trim().to_owned()
+    let name = buf.trim();
+    println!("Welcome, {}!", name.green());
+    name.to_string()
 }
 
 async fn init_display() {
