@@ -2,9 +2,13 @@ extern crate colored;
 
 //use ::rand::prelude::*;
 //use rand::{distr::Alphanumeric, rng};
-use std::{env, str::Bytes, time::Duration};
+use std::{env, str::Bytes, sync::Arc, time::Duration};
 use chat::cmd::Command;
-use futures_util::{future, pin_mut, StreamExt};
+use futures_util::{
+    future,
+    pin_mut, 
+    StreamExt
+};
 //use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use tokio::io::*;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::{Utf8Bytes, protocol::Message}};
@@ -17,8 +21,12 @@ async fn main() {
     let user_name= register_name().await;
     let user_name: &'static str  = Box::leak(user_name.into_boxed_str());
     let url = get_connection_address().await;
-    let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-    tokio::spawn(send_message(stdin_tx, &user_name));
+    let (mut stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
+    //let tx = Arc::new(tokio::sync::Mutex::new(stdin_tx));
+    //let tx1 = tx.clone();
+    tokio::spawn({
+        send_message(stdin_tx, &user_name)
+    });
     let ws_stream = establish_connection(&url).await;
     let (write, read) = ws_stream.split();
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
@@ -57,7 +65,7 @@ async fn recv_messages(msg: Message) {
         .await.expect("can't write a message");
 }
 
-async fn send_message(tx: futures_channel::mpsc::UnboundedSender<Message>, user_name: &str) {
+async fn send_message(mut tx: futures_channel::mpsc::UnboundedSender<Message>, user_name: &str) {
     let mut stdin = tokio::io::stdin();
     let user = format!("[{}] ", user_name).as_bytes().to_vec();
     loop {
@@ -100,9 +108,14 @@ async fn check_command(input: &str) -> Option<Command> {
     }
 }
 
-async fn send_command(tx: futures_channel::mpsc::UnboundedSender<Message>, command: &Command) {
+async fn send_command(mut tx: futures_channel::mpsc::UnboundedSender<Message>, command: &Command) -> bool {
+    let mut closing= false;
     let cmd_msg = match command {
         Command::Quit => {
+            tx.disconnect();
+            let msg = "connection closed".to_string().red();
+            println!("{}", msg);
+            closing = true;
             "/quit".to_string()
         }
         Command::ListUsers => {
@@ -112,8 +125,9 @@ async fn send_command(tx: futures_channel::mpsc::UnboundedSender<Message>, comma
             format!("/register {}", name)
         }
     };
-        //let text = Utf8Bytes::from_bytes_unchecked(cmd.into());
-        let _ = tx.unbounded_send(Message::Text(cmd_msg.into()));
+    //let text = Utf8Bytes::from_bytes_unchecked(cmd.into());
+    let _ = tx.unbounded_send(Message::Text(cmd_msg.into()));
+    return closing;
 }
 
 async fn register_name() -> String {
