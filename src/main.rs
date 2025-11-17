@@ -3,6 +3,7 @@ extern crate colored;
 //use ::rand::prelude::*;
 //use rand::{distr::Alphanumeric, rng};
 use std::{env, str::Bytes, time::Duration};
+use chat::cmd::Command;
 use futures_util::{future, pin_mut, StreamExt};
 //use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use tokio::io::*;
@@ -15,11 +16,9 @@ async fn main() {
     init_display().await;
     let user_name= register_name().await;
     let user_name: &'static str  = Box::leak(user_name.into_boxed_str());
-    println!("Welcome, {}!", user_name);
     let url = get_connection_address().await;
     let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
     tokio::spawn(send_message(stdin_tx, &user_name));
-    //tokio::spawn(auto_sender(stdin_tx));
     let ws_stream = establish_connection(&url).await;
     let (write, read) = ws_stream.split();
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
@@ -56,7 +55,6 @@ async fn recv_messages(msg: Message) {
     //text.insert_str(0, "[↘︎]");
     tokio::io::stdout().write_all(text.into_bytes().as_slice())
         .await.expect("can't write a message");
-
 }
 
 async fn send_message(tx: futures_channel::mpsc::UnboundedSender<Message>, user_name: &str) {
@@ -69,39 +67,60 @@ async fn send_message(tx: futures_channel::mpsc::UnboundedSender<Message>, user_
             Ok(n) => n,
         };
         buf.truncate(n);
-        //let symbol = "[↗] ".as_bytes();
-        let mut msg = user.clone(); 
-        msg.extend_from_slice(&buf);
-        unsafe {
-            let text = Utf8Bytes::from_bytes_unchecked(msg.into());
-            if tx.unbounded_send(Message::Text(text)).is_err() {
-                break;
+        match check_command(std::str::from_utf8(&buf).unwrap()).await {
+            Some(command) => {
+                send_command(tx.clone(), &command).await;
+                if let Command::Quit = command { break; }
+                continue;
             }
-        }
+            None => {
+                let mut msg = user.clone(); 
+                msg.extend_from_slice(&buf);
+                unsafe {
+                    let text = Utf8Bytes::from_bytes_unchecked(msg.into());
+                    if tx.unbounded_send(Message::Text(text)).is_err() {
+                        break;
+                    }
+                }
+            }
+        }        
     }
 }
 
-/* async fn auto_sender(tx: futures_channel::mpsc::UnboundedSender<Message>) {
-    let arrow = "[↗]  ".as_bytes().to_vec();
-    loop {
-        tokio::time::sleep(Duration::from_secs(4)).await;
-        let rng = rng();
-        let buf: Vec<u8> = rng.sample_iter(Alphanumeric).take(32).collect();
-        //let symbol = "[↗] ".as_bytes();
-        let mut msg = Vec::with_capacity(arrow.len() + buf.len());
-        msg.extend_from_slice(arrow.as_slice());
-        msg.extend_from_slice(&buf);
-        println!("{}", &msg.as_slice().iter().map(|&c| c as char).collect::<String>());
-        if tx.unbounded_send(Message::Binary(Bytes::from(msg))).is_err() {
-            break;
+async fn check_command(input: &str) -> Option<Command> {
+    let trimmed = input.trim();
+    match trimmed {
+        "/quit" => Some(Command::Quit),
+        "/list" => Some(Command::ListUsers),
+        cmd if cmd.starts_with("/register ") => {
+            let name = cmd.trim_start_matches("/register ").to_string();
+            Some(Command::RegisterUserName(name))
         }
+        _ => None,
     }
-} */
+}
+
+async fn send_command(tx: futures_channel::mpsc::UnboundedSender<Message>, command: &Command) {
+    let cmd_msg = match command {
+        Command::Quit => {
+            "/quit".to_string()
+        }
+        Command::ListUsers => {
+            "/list".to_string()
+        }
+        Command::RegisterUserName(name) => {
+            format!("/register {}", name)
+        }
+    };
+        //let text = Utf8Bytes::from_bytes_unchecked(cmd.into());
+        let _ = tx.unbounded_send(Message::Text(cmd_msg.into()));
+}
 
 async fn register_name() -> String {
     println!("Enter your user name: ");
     let mut buf = String::new();
     _ = std::io::stdin().read_line(&mut buf).expect("failed to register user name");
+    println!("Welcome, {}!", &buf);
     buf.trim().to_owned()
 }
 
