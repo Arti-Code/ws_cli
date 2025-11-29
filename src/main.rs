@@ -1,10 +1,7 @@
 extern crate colored;
-
+use std::io::Write;
 use std::{
-    env, 
-    //str::Bytes, 
-    //sync::Arc, 
-    time::Duration
+    env, sync::Arc, time::Duration
 };
 use chat::cmd::Command;
 use futures_util::{
@@ -53,9 +50,12 @@ async fn main() {
 
 async fn establish_connection(url: &str) -> WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>> {
     print!("connecting to: {}...", url);
+    //let msg = format!("connecting to: {}...", url);
+    //std::io::stdout().write_all(msg.as_bytes()).expect("ups!");
+    _ = std::io::stdout().flush().expect("ups!");
     tokio::time::sleep(Duration::from_secs(1)).await;
     let (ws_stream, _) = connect_async(url).await.expect("failed to connect");
-    println!("[ok]]");
+    println!("[OK]");
     println!("---------------------");
     ws_stream
 }
@@ -64,20 +64,27 @@ async fn recv_messages(msg: Message) {
     let text = msg.into_text()
         .expect("unreadable data");
     let text = text.to_string();
+    //_ = std::io::stdout().write_all(text.as_bytes());
+    println!("{}", text.bold());
     //text.insert_str(0, "[↘︎]");
-    tokio::io::stdout().write_all(text.into_bytes().as_slice())
-        .await.expect("can't write a message");
+    //tokio::io::stdout().write_all(text.into_bytes().as_slice())
+    //    .await.expect("can't write a message");
 }
 
 async fn send_message(tx: ChatSender, user_name: &str) {
-    let mut stdin = tokio::io::stdin();
+    //let mut stdin0 = tokio::io::stdin();
     let user = format!("[{}] ", user_name).as_bytes().to_vec();
     loop {
+        //print!("[Me]: ");
+        //_ = std::io::stdout().flush();
+        let mut stdin = tokio::io::stdin();
         let mut buf = vec![0; 1024];
+        //stdin.chain(next)
         let n = match stdin.read(&mut buf).await {
             Err(_) | Ok(0) => break,
             Ok(n) => n,
         };
+        
         buf.truncate(n);
         match check_command(std::str::from_utf8(&buf).unwrap()).await {
             Some(command) => {
@@ -88,6 +95,8 @@ async fn send_message(tx: ChatSender, user_name: &str) {
             None => {
                 let mut msg = user.clone(); 
                 msg.extend_from_slice(&buf);
+                //let my_msg = String::from_utf8_lossy(&msg).to_string();
+                //println!("{}", my_msg.green());
                 unsafe {
                     let text = Utf8Bytes::from_bytes_unchecked(msg.into());
                     if tx.unbounded_send(Message::Text(text)).is_err() {
@@ -135,7 +144,8 @@ async fn send_command(tx: ChatSender, command: &Command) -> bool {
 }
 
 async fn register_name() -> String {
-    println!("Enter your user name: ");
+    print!("Enter your user name: ");
+    std::io::stdout().flush().expect("ups! something went wrong!");
     let mut buf = String::new();
     _ = std::io::stdin().read_line(&mut buf).expect("failed to register user name");
     let name = buf.trim();
