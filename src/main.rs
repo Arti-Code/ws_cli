@@ -1,7 +1,7 @@
 extern crate colored;
 use std::io::Write;
 use std::{
-    env, sync::Arc, time::Duration
+    env, time::Duration
 };
 use chat::cmd::Command;
 use futures_util::{
@@ -27,7 +27,9 @@ async fn main() {
     //let tx = Arc::new(tokio::sync::Mutex::new(stdin_tx));
     //let tx1 = tx.clone();
     tokio::spawn(send_message(stdin_tx.clone(), &user_name));
+    print!("connecting to {}...", &url);
     let ws_stream = establish_connection(&url).await;
+    println!("[ok]");
     send_command(stdin_tx.clone(), &Command::RegisterUserName(user_name.to_string())).await;
     let (write, read) = ws_stream.split();
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
@@ -49,21 +51,22 @@ async fn main() {
 }
 
 async fn establish_connection(url: &str) -> WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>> {
-    print!("connecting to: {}...", url);
+    //print!("connecting to: {}...", url);
     //let msg = format!("connecting to: {}...", url);
     //std::io::stdout().write_all(msg.as_bytes()).expect("ups!");
     _ = std::io::stdout().flush().expect("ups!");
     tokio::time::sleep(Duration::from_secs(1)).await;
     let (ws_stream, _) = connect_async(url).await.expect("failed to connect");
-    println!("[OK]");
-    println!("---------------------");
+    //println!("[OK]");
+    //println!("---------------------");
     ws_stream
 }
 
 async fn recv_messages(msg: Message) {
     let text = msg.into_text()
         .expect("unreadable data");
-    let text = text.to_string();
+    let mut text = text.to_string();
+    text = text.trim().to_string();
     //_ = std::io::stdout().write_all(text.as_bytes());
     println!("{}", text.bold());
     //text.insert_str(0, "[↘︎]");
@@ -121,11 +124,12 @@ async fn check_command(input: &str) -> Option<Command> {
     }
 }
 
-async fn send_command(tx: ChatSender, command: &Command) -> bool {
+async fn send_command(mut tx: ChatSender, command: &Command) -> bool {
     let mut closing= false;
     let cmd_msg = match command {
         Command::Quit => {
-            tx.close_channel();
+            tx.disconnect();
+            //tx.close_channel();
             let msg = "connection closed".to_string().red();
             println!("{}", msg);
             closing = true;
@@ -167,6 +171,7 @@ async fn init_display() {
 async fn get_connection_address() -> String {
     match env::args().nth(1) {
         Some(url) => url,
-        None => "ws://yamanote.proxy.rlwy.net:26134".to_string(),
+        None => "ws://127.0.0.1:8080".to_string(),
+        //None => "ws://yamanote.proxy.rlwy.net:26134".to_string(),
     }
 }
